@@ -90,13 +90,36 @@ private:
 class BookingManager
 {
 public:
-    /* TODO: Add a new booking. */
+    /* Type alias for booking identifiers */
+    using BookingId = std::size_t;
+
+    /* Requirement 1: Add a new booking. */
+    BookingId addBooking(Booking booking)
+    {
+        /* The booking ID is simply the index of the booking in the vector */
+        const BookingId id = bookings_.size();
+
+        bookings_.push_back(std::move(booking));
+
+        try
+        {
+            bookingsByDeparture_.emplace(
+                bookings_[id].getDepartureTime(),
+                id);
+        }
+        catch(...)
+        {
+            bookings_.pop_back(); /* Rollback the booking addition if an exception occurs */
+            throw; /* Rethrow the exception to propagate it */
+        }
+    
+        return id;
+    }
     /* TODO: Select bookings departing before a given time. */
     /* TODO: Select bookings visiting two airports sequentially. */
 
 private:
-    using BookingId = std::size_t;
-
+    /* Booking IDs are stable vector indices, because bookings are never removed */
     std::vector<Booking> bookings_;
     std::multimap<std::time_t, BookingId> bookingsByDeparture_;
 };
