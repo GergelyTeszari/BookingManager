@@ -1,0 +1,11 @@
+# Visual Studio
+.vs/
+
+# VS Code local settings
+.vscode/
+
+# Compiler output
+*.exe
+*.obj
+*.pdb
+*.ilk
