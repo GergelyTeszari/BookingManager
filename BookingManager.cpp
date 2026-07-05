@@ -2,11 +2,14 @@
 
 /* ########## includes ########## */
 
+#include <algorithm> /* for std::find */
 #include <cstddef> /* for std::size_t */
 #include <ctime> /* for std::time_t */
+#include <functional> /* for std::hash */
 #include <map> /* for std::multimap */
 #include <stdexcept> /* for std::invalid_argument */
 #include <string> /* for std::string */
+#include <unordered_map> /* for std::unordered_map */
 #include <utility> /* for std::move */
 #include <vector> /* for std::vector */
 
@@ -22,7 +25,7 @@ public:
     {
     }
 
-    const std::string& Name() const
+    const std::string& name() const
     {
         return name_;
     }
@@ -39,9 +42,14 @@ public:
     {
     }
 
-    const std::string& Code() const
+    const std::string& code() const
     {
         return code_;
+    }
+
+    bool operator==(const Airport& other) const noexcept
+    {
+        return code_ == other.code_;
     }
 
 private:
@@ -99,20 +107,70 @@ public:
         /* The booking ID is simply the index of the booking in the vector */
         const BookingId id = bookings_.size();
 
-        bookings_.push_back(std::move(booking));
+        bool bookingInserted = false;
+        bool departureInserted = false;
+        std::size_t insertedLegCount = 0;
+
+        std::multimap<std::time_t, BookingId>::iterator departureIterator;
+        std::vector<RouteLeg> legsToBeInserted;
+        
+        const std::time_t departureTime = booking.getDepartureTime();
+        const auto& itinerary = booking.getItinerary();
+
+        for (std::size_t i = 0; i + 1 < itinerary.size(); ++i)
+        {
+            RouteLeg leg{itinerary[i], itinerary[i + 1]};
+            if (std::find(
+                legsToBeInserted.begin(),
+                legsToBeInserted.end(),
+                leg) == legsToBeInserted.end())
+            {
+                legsToBeInserted.push_back(std::move(leg));
+            }
+        }
 
         try
         {
-            bookingsByDeparture_.emplace(
-                bookings_[id].getDepartureTime(),
-                id);
+            bookings_.push_back(std::move(booking));
+            bookingInserted = true;
+            
+            departureIterator = bookingsByDeparture_.emplace(departureTime, id);
+            departureInserted = true;
+
+            for (const auto& leg : legsToBeInserted)
+            {
+                bookingsByRouteLeg_[leg].push_back(id);
+                ++insertedLegCount;
+            }
         }
-        catch(...)
+        catch (...)
         {
-            bookings_.pop_back(); /* Rollback the booking addition if an exception occurs */
-            throw; /* Rethrow the exception to propagate it */
+            for (std::size_t i = 0; i < insertedLegCount; ++i)
+            {
+                auto routeEntryBucket = 
+                    bookingsByRouteLeg_.find(legsToBeInserted[i]);
+
+                if (routeEntryBucket != bookingsByRouteLeg_.end())
+                {
+                    routeEntryBucket->second.pop_back();
+
+                    if (routeEntryBucket->second.empty())
+                    {
+                        bookingsByRouteLeg_.erase(routeEntryBucket);
+                    }
+                }
+            }
+            if (departureInserted)
+            {
+                bookingsByDeparture_.erase(departureIterator);
+            }
+            if (bookingInserted)
+            {
+                bookings_.pop_back();
+            }
+            throw; 
         }
-    
+
         return id;
     }
 
@@ -133,12 +191,70 @@ public:
         return result;
     }
 
-    /* TODO: Select bookings visiting two airports sequentially. */
+    /* Requirement 3: Select bookings visiting two airports sequentially. */
+    std::vector<Booking> selectBookingsVisitingTwoAirports(
+        const Airport& from, const Airport& to) const
+    {
+        std::vector<Booking> result;
+
+        /* Use the route-leg index for direct lookup instead of scanning all itineraries. */
+        const RouteLeg requestedLeg{from, to};
+
+        const auto routeEntryBucket = bookingsByRouteLeg_.find(requestedLeg);
+        if (routeEntryBucket == bookingsByRouteLeg_.end())
+        {
+            return result;
+        }
+
+        /* Convert the indexed booking IDs into independent result copies. */
+        for (const BookingId id : routeEntryBucket->second)
+        {
+            result.push_back(bookings_.at(id));
+        }
+
+        return result;
+    }
 
 private:
     /* Booking IDs are stable vector indices, because bookings are never removed */
     std::vector<Booking> bookings_;
+
     std::multimap<std::time_t, BookingId> bookingsByDeparture_;
+    
+    struct RouteLeg
+    {
+        Airport from;
+        Airport to;
+
+        bool operator==(const RouteLeg& other) const noexcept
+        {
+            return from == other.from &&
+                to == other.to;
+        }
+    };
+
+    struct RouteLegHash
+    {
+        std::size_t operator()(const RouteLeg& leg) const noexcept
+        {
+            /* Hash both airport codes and combine them into one value.
+            The asymmetric combination makes the route direction relevant. */
+            const std::size_t fromHash =
+                std::hash<std::string>{}(leg.from.code());
+
+            const std::size_t toHash =
+                std::hash<std::string>{}(leg.to.code());
+
+            return fromHash ^ (toHash << 1);
+        }
+    };
+
+    /* Exact route-leg lookup: each adjacent airport pair maps to matching booking IDs. */
+    std::unordered_map<
+        RouteLeg,
+        std::vector<BookingId>,
+        RouteLegHash>
+        bookingsByRouteLeg_;
 };
 
 /* ########## end class declarations ########## */
