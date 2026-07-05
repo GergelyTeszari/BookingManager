@@ -29,7 +29,10 @@ Enter-VsDevShell `
 
 Set-Location $PSScriptRoot
 
-cl /nologo /EHsc /std:c++20 BookingManager.cpp
+cl /nologo /EHsc /std:c++20 `
+    BookingManager.cpp `
+    BookingManagerTests.cpp `
+    /Fe:BookingManagerTests.exe
 
 if ($LASTEXITCODE -ne 0)
 {
@@ -38,3 +41,13 @@ if ($LASTEXITCODE -ne 0)
 }
 
 Write-Host " ########## Build successful. ##########"
+
+& "$PSScriptRoot\BookingManagerTests.exe"
+
+if ($LASTEXITCODE -ne 0)
+{
+    Write-Host " ########## Tests failed. ##########"
+    exit $LASTEXITCODE
+}
+
+Write-Host " ########## All tests passed. ##########"
