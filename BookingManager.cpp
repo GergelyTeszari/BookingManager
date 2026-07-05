@@ -115,7 +115,24 @@ public:
     
         return id;
     }
-    /* TODO: Select bookings departing before a given time. */
+
+    /* Requirement 2: Select bookings departing before a given time. */
+    std::vector<Booking> selectBookingsBefore(std::time_t departureTime) const
+    {
+        /* Returning copies keeps the result independent from the manager's lifetime. */
+        std::vector<Booking> result;
+
+        /* Use lower_bound to find the first booking that departs at or after the given time */
+        const auto end = bookingsByDeparture_.lower_bound(departureTime);
+
+        for (auto iter = bookingsByDeparture_.begin(); iter != end; ++iter)
+        {
+            result.push_back(bookings_.at(iter->second));
+        }
+
+        return result;
+    }
+
     /* TODO: Select bookings visiting two airports sequentially. */
 
 private:
